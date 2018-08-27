@@ -1,0 +1,862 @@
+#!/usr/bin/python3
+# -*- coding: utf-8 -*-
+
+
+#
+#  [Program]
+#
+#  kcupps_0.0.0-alpha
+#  Common User Passwords Profiler
+#
+#
+#
+#  [Author]
+#
+#  Muris Kurgas aka j0rgan
+#  j0rgan [at] remote-exploit [dot] org
+#  http://www.remote-exploit.org
+#  http://www.azuzi.me
+#
+#  Klint aka klint-k
+#  klint-k@some.where
+#  e-mail is a good place to hack
+#
+#
+#
+#
+#  [License]
+#
+#  This program is free software; you can redistribute it and/or modify
+#   (so that is what I did klint-k)
+#  it under the terms of the GNU General Public License as published by
+#  the Free Software Foundation; either version 3 of the License, or
+#  any later version.
+#
+#  This program is distributed in the hope that it will be useful,
+#  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#  GNU General Public License for more details.
+#
+#  You should have received a copy of the GNU General Public License
+#  along with this program; if not, write to the Free Software
+#  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+#
+#  See 'docs/LICENSE' for more information.
+
+import sys
+from os import linesep
+from os import path
+from os import makedirs
+from os import chdir
+from os import getcwd
+import ftplib
+import configparser
+import urllib.request
+import urllib.parse
+import urllib.error
+import gzip
+import csv
+import datetime
+from string import punctuation
+#import string
+import random
+from phonenumbers import format_number
+from phonenumbers import parse
+from phonenumbers import PhoneNumberFormat
+#import glob
+
+
+config = configparser.ConfigParser()
+config.read('/etc/cupp.cfg')
+
+years = []
+for J in (config.get('years', 'years').split(',')):
+    j = int(J)
+    years.append(j)
+
+##
+##numfrom = config.getint('nums','from')
+##numto = config.getint('nums','to')
+##
+##wcfrom = config.getint('nums','wcfrom')
+##wcto = config.getint('nums','wcto')
+##
+##threshold = config.getint('nums','threshold')
+
+chars =  punctuation
+
+
+
+def get_ftp(sub_path):
+    def handleDownload(block):
+        file.write(block)
+        print(".", end=' ')
+    oldpwd=getcwd()
+    if not path.exists('dictionaries'):
+        makedirs('dictionaries')
+    print("\r\n[+] connecting...\r\n")
+    ftp = ftplib.FTP(config.get('downloader','ftpurl'))
+    ftp.login(config.get('downloader','ftpuser'), config.get('downloader','ftppass'))
+    ftp.cwd(config.get('downloader','ftppath'))
+    ftp.cwd(sub_path)
+    if not path.exists('dictionaries/' + sub_path):
+        makedirs('dictionaries/' + sub_path)
+    dire = 'dictionaries/' + sub_path
+    #print(dire)
+    chdir(dire)
+    for K in ftp.nlst():
+        print('Downloading %s' % (sub_path + K))
+        with open(K, 'wb') as file:
+            ftp.retrbinary('RETR ' + K, handleDownload)
+        file.close()
+        print(' done.')
+    print('[+] files saved to '+ dire)
+    ftp.quit()
+    chdir(oldpwd)
+
+def create_dir(Directory):
+    #print('creat_dir started')
+    if not path.exists(Directory):
+        makedirs(Directory)
+    #print('dreat_dir OK')
+
+def write_file(Path, Data):
+    Data.sort()
+    if not path.exists(Path):
+        with open(Path, 'w') as file_obj:
+            AppendData = linesep.join(Data)
+            file_obj.write(linesep.join(Data))
+    if path.exists(Path):
+        with open(Path, 'a') as file_obj:
+            AppendData = linesep.join(Data)
+            file_obj.write(linesep.join(Data))
+    file_obj.close()
+    return
+
+def read_file(Path):
+    with open(Path, 'r') as file_obj:
+        file_data = file_obj.read()
+    file_obj.close()
+    return file_data
+
+def b_input(b_str):
+    if b_str == ' ':
+        b_str_update = ' '
+    else:
+        b_str_update = " " + b_str + " "
+    while True:
+        b_day = input(">%sbirthdate (DDMMYYYY): " % b_str_update)
+        if b_day == '':
+            j = str(random.randint(1, 365))
+            Y = str(random.choice(years))
+            m = str(datetime.datetime.strptime(Y + j, '%Y%j').month)
+            if len(m) != 2:
+                m = "0" + m
+            d = str(datetime.datetime.strptime(Y + j, '%Y%j').day)
+            if len(d) != 2:
+                d = "0" + d
+            b_day = str(d) + str(m) + str(Y)
+            print(b_day)
+            break
+        b_day = str(b_day)
+        if b_day != 0:
+            if 8 > len(b_day) > 0:
+                print("\n[-] You must enter 8 digits for birthday!")
+            else:
+                try:
+                    datetime.datetime.strptime(b_day, '%d%m%Y')
+                except ValueError:
+                    print('\n[-] There was a problem the order is day, month, then year. [DDMMYYYY]')
+                else:
+                    break
+    Year = str(datetime.datetime.strptime(b_day, '%d%m%Y').date().year)
+    Month = str(datetime.datetime.strptime(b_day, '%d%m%Y').date().month)
+    if len(Month) != 2:
+        Month = "0" + Month
+    Day = str(datetime.datetime.strptime(b_day, '%d%m%Y').date().day)
+    if len(Day) != 2:
+        Day = "0" + Day
+    year = Year[-2:]
+    return (b_day, Year, year, Month, Day)
+
+def p_number(p_str):
+    if p_str == ' ':
+        p_str_update = ' '
+    else:
+        p_str_update = " " + p_str + " "
+    while True:
+        numb = input(">%sphone-number (XXXXXXXXXX): " % p_str_update)
+        if numb == '':
+            numb = str(random.randint(100, 999)) + str(random.randint(100, 999)) + str(random.randint(1000, 9999))
+        numb = str(numb)
+        if len(numb) == 10:
+            try:
+                number = (format_number(parse(str(numb), 'CA'), PhoneNumberFormat.NATIONAL))
+                umber = number.lstrip('(')
+                l_numb, sep, phone = umber.partition('-')
+                a_code, sep2, local = l_numb.partition(') ')
+                w_number = str(a_code) + str(local) + str(phone)
+            except:
+                pass
+            return (w_number, a_code, local, phone)
+        else:
+            if 3 < len(numb) < 12:
+                return (numb)
+            else:
+                print("\n[-] You must enter 4 to 11 numbers!")
+
+
+def Question(Q,i=[0]):
+    if i[0] == 0:
+        while True:
+            name = input("> First Name: ").lower()
+            if name == '' or len(name) == 0 or name == " " or name == "  " or name == "   ":
+                pass
+            else:
+                break
+        global m_name
+        m_name = str(name)
+    else:
+        while True:
+            name = input("> %s: " % Q).lower()
+            if name == '':
+                did_y_know = input("> Do you know the %s? Y/[N]: " % Q).lower()
+                if did_y_know == 'y':
+                    did_y_know = ''
+                    pass
+                else:
+                    break
+                pass
+            else:
+                break
+    i[0]+=1 # mutable variable get evaluated ONCE
+    return (name, name.title(), name[::-1])
+
+def leet_fix(word_l):
+    # 1337 mode configs, well you can add more lines if you add it to config file too.
+    # You will need to add more lines in two places in cupp.py code as well...
+    leetmsg = word_l
+    leetwords = "aeioutsyou"
+    for letter in word_l:
+        if letter in leetwords:
+            leetmsg = leetmsg.replace('a', config.get('leet','a'))
+            leetmsg = leetmsg.replace('e', config.get('leet','e'))
+            leetmsg = leetmsg.replace('i', config.get('leet','i'))
+            leetmsg = leetmsg.replace('o', config.get('leet','o'))
+            leetmsg = leetmsg.replace('t', config.get('leet','t'))
+            leetmsg = leetmsg.replace('s', config.get('leet','s'))
+            leetmsg = leetmsg.replace('g', config.get('leet','g'))
+            leetmsg = leetmsg.replace('z', config.get('leet','z'))
+            leetmsg = leetmsg.replace('you', config.get('leet','you'))
+            leetmsg = leetmsg.replace('own', config.get('leet','own'))
+    return leetmsg
+
+
+if __name__ == "__main__":
+    if len(sys.argv) < 2 or sys.argv[1] == '-h':
+        print(" ___________ ")
+        print(" \033[07m  kcupps.py! \033[27m              # Common")
+        print("      \                     # User")
+        print("       \   \033[1;31m,__,\033[1;m             # Passwords")
+        print("        \  \033[1;31m(\033[1;moo\033[1;31m)____\033[1;m         # Profiler")
+        print("           \033[1;31m(__)    )\ \033[1;m  ")
+        print("           \033[1;31m   ||--|| \033[1;m\033[05m*\033[25m\033[1;m      [ Muris Kurgas | j0rgan@remote-exploit.org ]\r\n\r\n")
+        print("           \033[1;31m   ||--|| \033[1;m\033[05m*\033[25m\033[1;m      [ klint-k | klint-k@email.is.eveal ]\r\n\r\n")
+        print("	[ Options ]\r\n")
+        print("	-h	You are looking at it baby! :)")
+        print(" 		 For more help take a look in docs/README")
+        print("		 Global configuration file is cupp.cfg\n")
+
+        print("	-i	Interactive questions for user password profiling\r\n")
+
+        print("	-w	Use this option to improve existing dictionary,")
+        print("		 or WyD.pl output to make some pwnsauce\r\n")
+
+        print("	-l	Download huge wordlists from repository\r\n")
+        print("	-a	Parse default usernames and passwords directly from Alecto DB.")
+        print("		 Project Alecto uses purified databases of Phenoelit and CIRT")
+        print("		 which where merged and enhanced.\r\n")
+        print("	-v	Version of the program\r\n")
+        exit()
+    elif sys.argv[1] == '-v':
+        print("\r\n	\033[1;31m[ kcupps.py ]  v3.1.0-alpha_klint\033[1;m\r\n")
+        print("	* Hacked up by j0rgan - j0rgan@remote-exploit.org")
+        print("	* Hacked up by klint-k -  email can be prirated  ")
+        print("	* http://web.page.is.dead\r\n")
+        print("	Take a look ./README.md file for more info about the program\r\n")
+        exit()
+    elif sys.argv[1] == '-t':
+        print("For Testing")
+        chdir("/mydir")
+        for file in glob.glob("*.txt"):
+            print(file)
+        print(sys.argv)
+        leet_fix(word_l)
+        pass
+    #######################################################
+    elif sys.argv[1] == '-w':
+        if len(sys.argv) < 3:
+            print("\r\n[Usage]:	"+sys.argv[0]+"  -w  [FILENAME]\r\n")
+            exit()
+        with open(sys.argv[2], "r") as fajl:
+            listic = fajl.readlines()
+            linije = 0
+            for line in listic:
+                linije += 1
+        listica = []
+        for x in listic:
+            try:
+                listica.remove(x)
+            except ValueError:
+                pass
+            listica.append(x)
+        print("\r\n      *************************************************")
+        print("      *                    \033[1;31mWARNING!!!\033[1;m                 *")
+        print("      *         Using large wordlists in some         *")
+        print("      *       options bellow is NOT recommended!      *")
+        print("      *************************************************\r\n")
+        conts = input("> Do you want to concatenate all words from wordlist? Y/[N]: ").lower()
+        if conts == "y" and linije > threshold:
+            print("\r\n[-] Maximum number of words for concatenation is "+str(threshold))
+            print("[-] Check configuration file for increasing this number.\r\n")
+            conts = input("> Do you want to concatenate all words from wordlist? Y/[N]: ").lower()
+        conts = conts
+        cont = ['']
+        if conts == "y":
+            for cont1 in listica:
+                for cont2 in listica:
+                    if listica.index(cont1) != listica.index(cont2):
+                        cont.append(cont1+cont2)
+        spechars = ['']
+        spechars1 = input("> Do you want to add special chars at the end of words? Y/[N]: ").lower()
+        if spechars1 == "y":
+            for spec1 in chars:
+                spechars.append(spec1)
+            for spec2 in chars:
+                spechars.append(spec1+spec2)
+                for spec3 in chars:
+                    spechars.append(spec1+spec2+spec3)
+        randnum = input("> Do you want to add some random numbers at the end of words? Y/[N]:").lower()
+        leetmode = input("> Leet mode? (i.e. leet = 1337) Y/[N]: ").lower()
+        kombinacija1 = list(komb(listica, years))
+        kombinacija2 = ['']
+        if conts == "y":
+            kombinacija2 = list(komb(cont, years))
+        kombinacija3 = ['']
+        kombinacija4 = ['']
+        if spechars1 == "y":
+            kombinacija3 = list(komb(listica, spechars))
+            if conts == "y":
+                kombinacija4 = list(komb(cont, spechars))
+        kombinacija5 = ['']
+        kombinacija6 = ['']
+        if randnum == "y":
+            kombinacija5 = list(concats(listica, numfrom, numto))
+            if conts == "y":
+                kombinacija6 = list(concats(cont, numfrom, numto))
+        print("\r\n[+] Now making a dictionary...")
+        print("[+] Sorting list and removing duplicates...")
+        komb_unique1 = list(dict.fromkeys(kombinacija1).keys())
+        komb_unique2 = list(dict.fromkeys(kombinacija2).keys())
+        komb_unique3 = list(dict.fromkeys(kombinacija3).keys())
+        komb_unique4 = list(dict.fromkeys(kombinacija4).keys())
+        komb_unique5 = list(dict.fromkeys(kombinacija5).keys())
+        komb_unique6 = list(dict.fromkeys(kombinacija6).keys())
+        komb_unique7 = list(dict.fromkeys(listica).keys())
+        komb_unique8 = list(dict.fromkeys(cont).keys())
+        uniqlist = komb_unique1+komb_unique2+komb_unique3+komb_unique4+komb_unique5+komb_unique6+komb_unique7+komb_unique8
+        unique_lista = list(dict.fromkeys(uniqlist).keys())
+        unique_leet = []
+        if leetmode == "y":
+            for x in unique_lista: # if you want to add more leet chars, you will need to add more lines in cupp.cfg too...
+                x = x.replace('a',a)
+                x = x.replace('i',i)
+                x = x.replace('e',e)
+                x = x.replace('t',t)
+                x = x.replace('o',o)
+                x = x.replace('s',s)
+                x = x.replace('g',g)
+                x = x.replace('z',z)
+                unique_leet.append(x)
+        unique_list = unique_lista + unique_leet
+        unique_list_finished = []
+        unique_list_finished = [x for x in unique_list if len(x) > wcfrom and len(x) < wcto]
+        print_to_file(sys.argv[2]+'.cupp.txt', unique_list_finished)
+        fajl.close()
+        exit()
+
+
+    ###################################################################################################
+    elif sys.argv[1] == '-i' or sys.argv[1] == '-iw':
+        try:
+            print("\n[+] Insert the informations about the victim to make a dictionary")
+            print("[+] If you don't know all the info, just hit enter when asked! ;)\r\n")
+            # We need some informations first!
+            word = []
+            number = []
+            new_list = []
+            ########## Master
+            for K in Question(''):
+                try:
+                    word.remove(K)
+                except ValueError:
+                    pass
+                word.append(K)
+            for K in Question("Surname"):
+                try:
+                    word.remove(K)
+                except ValueError:
+                    pass
+                word.append(K)
+            for K in Question("Nickname"):
+                try:
+                    word.remove(K)
+                except ValueError:
+                    pass
+                word.append(K)
+            for N in b_input(' '):
+                try:
+                    number.remove(N)
+                except ValueError:
+                    pass
+                number.append(N)
+            for P_N in p_number('Main'):
+                try:
+                    number.remove(P_N)
+                except ValueError:
+                    pass
+                number.append(P_N)
+            for P_N in p_number('Cell'):
+                try:
+                    number.remove(P_N)
+                except ValueError:
+                    pass
+                number.append(P_N)
+            for P_N in p_number('Work '):
+                try:
+                    number.remove(P_N)
+                except ValueError:
+                    pass
+                number.append(P_N)
+            print("\r\n")
+            ########## Partner
+            for K in Question("Partners name"):
+                try:
+                    word.remove(K)
+                except ValueError:
+                    pass
+                word.append(K)
+            for K in Question("Partners nickname"):
+                try:
+                    word.remove(K)
+                except ValueError:
+                    pass
+                word.append(K)
+            for N in b_input(' '):
+                try:
+                    number.remove(N)
+                except ValueError:
+                    pass
+                number.append(N)
+            for P_N in p_number('Main'):
+                try:
+                    number.remove(P_N)
+                except ValueError:
+                    pass
+                number.append(P_N)
+            for P_N in p_number('Cell'):
+                try:
+                    number.remove(P_N)
+                except ValueError:
+                    pass
+                number.append(P_N)
+            for P_N in p_number('Work '):
+                try:
+                    number.remove(P_N)
+                except ValueError:
+                    pass
+                number.append(P_N)
+            print("\r\n")
+            ########## Kid
+            while True:
+                try:
+                    N_kid = input("> How many Childeren? [0]: ")
+                    N_kid = int(N_kid)
+                except ValueError:
+                    if N_kid == "":
+                        N_kid = 0
+                        break
+                    pass
+                else:
+                    break
+            for K in range(N_kid):
+                for K in Question("Child's name"):
+                    try:
+                        word.remove(K)
+                    except ValueError:
+                        pass
+                    word.append(K)
+                for K in Question("Child's nickname"):
+                    try:
+                        word.remove(K)
+                    except ValueError:
+                        pass
+                    word.append(K)
+                for N in b_input(' '):
+                    try:
+                        number.remove(N)
+                    except ValueError:
+                        pass
+                    number.append(N)
+                for P_N in p_number('Main'):
+                    try:
+                        number.remove(P_N)
+                    except ValueError:
+                        pass
+                    number.append(P_N)
+                for P_N in p_number('Cell'):
+                    try:
+                        number.remove(P_N)
+                    except ValueError:
+                        pass
+                    number.append(P_N)
+                for P_N in p_number('Work '):
+                    try:
+                        number.remove(P_N)
+                    except ValueError:
+                        pass
+                    number.append(P_N)
+                print("\r\n")
+            ########## Company
+            for K in Question("Company name"):
+                try:
+                    word.remove(K)
+                except ValueError:
+                    pass
+            word.append(K)
+            if K != '':
+                for P_N in p_number('Main'):
+                    try:
+                        number.remove(P_N)
+                    except ValueError:
+                        pass
+                    number.append(P_N)
+                for P_N in p_number('Other'):
+                    try:
+                        number.remove(P_N)
+                    except ValueError:
+                        pass
+                    number.append(P_N)
+            print("\r\n")
+            ########## Pet
+            while True:
+                try:
+                    N_pet = input("> How many pets? [0] ")
+                    N_pet = int(N_pet)
+                except ValueError:
+                    if N_pet == "":
+                        N_pet = 0
+                        break
+                    pass
+                else:
+                    break
+            for J in range(N_pet):
+                for K in Question("Pet's name"):
+                    try:
+                        word.remove(K)
+                    except ValueError:
+                        pass
+                    word.append(K)
+                for N in b_input(' '):
+                    try:
+                        number.remove(N)
+                    except ValueError:
+                        pass
+                    number.append(N)
+            print("\r\n")
+            ########## Extra
+            ask_word = input("> Do you want to add some key words about the victim? Y/[N]: ").lower()
+            if ask_word == "y":
+                while True:
+                    word_input = input("> Please enter the words.  Spaces will be removed: ").replace(" ","")
+                    if word_input != "":
+                        try:
+                            word.remove(word_input)
+                            word.remove(word_input.title())
+                            word.remove(word_input[::-1])
+                        except ValueError:
+                            pass
+                        word.append(word_input.title())
+                        word.append(word_input[::-1])
+                        word.append(word_input)
+                    else:
+                        break
+            ############## Word Clean up 
+            for K in word:
+                if K == '':
+                    word.remove('')
+                if K == ' ':
+                    word.remove(' ')
+            word.sort()
+            number.sort()
+            print("\r\n")
+            ########## Special Chars
+            spechars = ['']
+            spechars1 = input("> Do you want to add special chars at the end of words? Y/[N]: ").lower()
+            if spechars1 == "y":
+                for spec1 in chars:
+                    spechars.append(spec1)
+                    for spec2 in chars:
+                        spechars.append(spec1+spec2)
+            print("\r\n")
+            ########## Randum number Question the fix is later
+            randnum = input("> Do you want to add some random numbers at the end of words? Y/[N]:").lower()
+            print("\r\n")
+            ########## LEET ??????
+            leetmode = input("> Leet mode? (i.e. leet = 1337) Y/[N]: ").lower()
+            if leetmode == 'y':
+                temp = []
+                for tmp in word:
+                    temp.append(leet_fix(tmp))
+                word = word + temp
+            print("\r\n")
+            ########## Make the Dictonary 
+            print("[+] Now making a dictionary...")
+            print("\r\n")
+            full_list = word + number + spechars    
+            for K in full_list:
+                if K == '':
+                    full_list.remove('')
+                if K == ' ':
+                    full_list.remove(' ')
+            if randnum == 'y':
+                for K in word:
+                    while len(K) < random.randint(8, 12):
+                        K = K +  str(random.randint(0, 9))
+                    new_list.append(K)
+            for K in word:
+                for J in full_list:
+                    if K == J:
+                        pass
+                    else:
+                        new_list.append((K + J))
+            for n in number:
+                try:
+                    new_list.remove(n)
+                except ValueError:
+                    pass
+                new_list.append(n)
+            new_list.sort()
+            if sys.argv[1] == '-iw':
+                for K in new_list:
+                    print(K)
+            else:
+                P = path.realpath(__file__).replace(path.relpath(__file__), '') + m_name+'.txt'
+                write_file(P, new_list)
+                #print(read_file(P))
+                lines = 0
+                for line in read_file(P):
+                    lines += 1
+                print("[+] Saving dictionary to \033[1;31m"+P+"\033[1;m, counting \033[1;31m"+str(lines)+" words.\033[1;m")
+                print("[+] Now load your pistolero with \033[1;31m"+P+"\033[1;m and shoot! Good luck!")
+        except KeyboardInterrupt:
+            exit('\n\rbye')
+
+    elif sys.argv[1] == '-l':
+
+        print("	\r\n	Choose the section you want to download:\r\n")
+        print("     1   Moby            14      french          27      places")
+        print("     2   afrikaans       15      german          28      polish")
+        print("     3   american        16      hindi           39      random")
+        print("     4   aussie          17      hungarian       30      religion")
+        print("     5   chinese         18      italian         31      russian")
+        print("     6   computer        19      japanese        32      science")
+        print("     7   croatian        20      latin           33      spanish")
+        print("     8   czech           21      literature      34      swahili")
+        print("     9   danish          22      movieTV         35      swedish")
+        print("    10   databases       23      music           36      turkish")
+        print("    11   dictionaries    24      names           37      yiddish")
+        print("    12   dutch           25      net             38      exit program")
+        print("    13   finnish         26      norwegian       \r\n")
+        print("	\r\n	Files will be downloaded from " + config.get('downloader','ftpname') + " repository")
+        print("	\r\n	Tip: After downloading wordlist, you can improve it with -w option\r\n")
+        print("	\r\n	Tip: Some of the directory have large and numerous files. The download may take a while. \r\n")
+        while True:
+            try:
+                filedown = int(input("> Enter number: "))
+            except ValueError:
+                print("\r\nThe number must be 1 to 38")
+                print('\r\nIf you want to exit use 38')
+            else:
+                if 0 < filedown < 39:
+                    filedown = str(filedown)
+                    break
+                else:
+                    print("\r\nThe number must be 1 to 38\r\n")
+                    print('If you want to exit use 38\r\n')
+                    pass
+        try:
+            if filedown == "1":
+                get_ftp('Moby')
+                exit()
+
+            if filedown == "2":
+                get_ftp('afrikaans')
+                exit()
+
+            if filedown == "3":
+                get_ftp('american')
+                exit()
+
+            if filedown == "4":
+                get_ftp('aussie')
+                exit()
+
+
+            if filedown == "5":
+                get_ftp('chinese')
+                exit()
+
+            if filedown == "6":
+                get_ftp('computer')
+                exit()
+
+            if filedown == "7":
+                get_ftp('croatian')
+                exit()
+
+            if filedown == "8":
+                get_ftp('czech')
+                exit()
+
+            if filedown == "9":
+                get_ftp('danish')
+                exit()
+
+            if filedown == "10":
+                get_ftp('databases')
+                exit()
+
+            if filedown == "11":
+                get_ftp('dictionaries')
+                exit()
+
+            if filedown == "12":
+                get_ftp('dutch')
+                exit()
+
+            if filedown == "13":
+                get_ftp('finnish')
+                exit()
+
+            if filedown == "14":
+                get_ftp('french')
+                exit()
+
+            if filedown == "15":
+                get_ftp('german')
+                exit()
+
+            if filedown == "16":
+                get_ftp('hindi')
+                exit()
+
+            if filedown == "17":
+                get_ftp('hungarian')
+                exit()
+
+            if filedown == "18":
+                get_ftp('italian')
+                exit()
+
+            if filedown == "19":
+                get_ftp('japanese')
+                exit()
+
+            if filedown == "20":
+                get_ftp('latin')
+                exit()
+
+            if filedown == "21":
+                get_ftp('literature')
+                exit()
+
+            if filedown == "22":
+                get_ftp('movieTV')
+                exit()
+
+            if filedown == "23":
+                get_ftp('music')
+                exit()
+
+            if filedown == "24":
+                get_ftp('names')
+                exit()
+
+            if filedown == "25":
+                get_ftp('net')
+                exit()
+
+            if filedown == "26":
+                get_ftp('norwegian')
+                exit()
+
+            if filedown == "27":
+                get_ftp('places')
+                exit()
+
+            if filedown == "28":
+                get_ftp('polish')
+                exit()
+
+            if filedown == "29":
+                get_ftp('random')
+                exit()
+
+            if filedown == "30":
+                get_ftp('religion')
+                exit()
+
+            if filedown == "31":
+                get_ftp('russian')
+                exit()
+
+            if filedown == "32":
+                get_ftp('science')
+                exit()
+
+            if filedown == "33":
+                get_ftp('spanish')
+                exit()
+
+            if filedown == "34":
+                get_ftp('swahili')
+                exit()
+
+            if filedown == "35":
+                get_ftp('swedish')
+                exit()
+
+            if filedown == "36":
+                get_ftp('turkish')
+                exit()
+
+            if filedown == "37":
+                get_ftp('yiddish')
+                exit()
+            else:
+                print('[-] leaving.')
+                exit()
+        except KeyboardInterrupt:
+            pass
+
+    else:
+        print("\r\n[Usage]:	"+sys.argv[0] +"  [OPTIONS] \r\n")
+        print("[Help]:		"+sys.argv[0] +"  -h\r\n")
+        exit()
+
+elif __name__ == 'kcupps':
+    for K in range(24):
+        h = b_input(' ')
+        print(K, h)
+    pass
